@@ -6,4 +6,4 @@ edition = "2021"
 [dependencies]
 hexx = "0.12.0"
 regex-automata = "0.4.4"
-
+bevy = { version = "0.12.1", features = ["dynamic_linking"] }

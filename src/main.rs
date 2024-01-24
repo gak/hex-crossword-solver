@@ -1,19 +1,40 @@
-use hexx::Hex;
+mod crosswords;
+
+use crate::crosswords::basic_crossword;
+use bevy::utils::HashMap;
+use hexx::{DiagonalDirection, Direction, Hex};
 use regex_automata::dfa::Automaton;
 use regex_automata::{hybrid, Anchored};
-use std::collections::HashMap;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct Line {
     start: Hex,
-    //    direction: ,
+    direction: Direction,
 }
 
+#[derive(Debug, Clone)]
 struct Crossword {
-    //    cells: HashMap<Hex, >
-    //    expressions: HashMap<, String>,
+    radius: usize,
+    expressions: HashMap<Line, String>,
 }
 
-fn main() {}
+impl Crossword {
+    fn new(radius: usize) -> Self {
+        Self {
+            radius,
+            expressions: HashMap::default(),
+        }
+    }
+
+    fn add_expression(&mut self, line: Line, expression: String) {
+        self.expressions.insert(line, expression);
+    }
+}
+
+fn main() {
+    let crossword = basic_crossword();
+    println!("{:#?}", crossword);
+}
 
 #[test]
 fn test_dense_dfa() {
