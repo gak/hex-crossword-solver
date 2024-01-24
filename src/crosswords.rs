@@ -6,13 +6,16 @@ pub fn basic_crossword() -> Crossword {
     let expressions = vec![
         (
             Right,
-            vec![
-                (0, -1, r"^.A$"),
-                (-1, 0, r"^(B|CD)*$"),
-                (-1, 1, r"^([^A]*)$"),
-            ],
+            vec![(0, -1, r".A"), (-1, 0, r"(B|CD)*"), (-1, 1, r"([^A]*)")],
         ),
-        (BottomLeft, vec![(0, 0, r"^.(C|HH)*$")]),
+        (
+            BottomLeft,
+            vec![(0, -1, r"BC"), (1, -1, r"B.*A"), (1, 0, r".*")],
+        ),
+        (
+            TopRight,
+            vec![(1, 0, r"(A|D)*"), (0, 1, r"C*"), (-1, 1, r"(.)\1")],
+        ),
     ];
 
     let mut crossword = Crossword::new(1);

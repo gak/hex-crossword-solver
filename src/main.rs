@@ -12,10 +12,45 @@ struct Line {
     direction: Direction,
 }
 
+#[derive(Debug, Clone, Default)]
+struct CharacterPermutations {
+    bitfield: u32,
+}
+
+impl CharacterPermutations {
+    fn new() -> Self {
+        Self { bitfield: 0 }
+    }
+
+    fn add(&mut self, c: char) {
+        debug_assert!(
+            c.is_ascii_uppercase() && c >= 'A' && c <= 'Z',
+            "Invalid character: {}",
+            c
+        );
+        let index = (c as u32) - ('A' as u32);
+        self.bitfield |= 1 << index;
+    }
+
+    fn contains(&self, c: char) -> bool {
+        debug_assert!(
+            c.is_ascii_uppercase() && c >= 'A' && c <= 'Z',
+            "Invalid character: {}",
+            c
+        );
+        let index = (c as u32) - ('A' as u32);
+        (self.bitfield & (1 << index)) != 0
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct StringPermutations(Vec<CharacterPermutations>);
+
 #[derive(Debug, Clone)]
 struct Crossword {
     radius: usize,
     expressions: HashMap<Line, String>,
+    permutations: HashMap<Line, CharacterPermutations>,
 }
 
 impl Crossword {
@@ -23,6 +58,7 @@ impl Crossword {
         Self {
             radius,
             expressions: HashMap::default(),
+            permutations: Default::default(),
         }
     }
 
