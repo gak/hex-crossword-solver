@@ -13,7 +13,7 @@ pub fn basic_crossword() -> Crossword {
             vec![(0, -1, r"BC"), (1, -1, r"B.*A"), (1, 0, r".*")],
         ),
         (
-            TopRight,
+            TopLeft,
             vec![(1, 0, r"(A|D)*"), (0, 1, r"C*"), (-1, 1, r"(.)\1")],
         ),
     ];

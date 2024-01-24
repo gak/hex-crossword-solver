@@ -2,6 +2,7 @@ mod crosswords;
 
 use crate::crosswords::basic_crossword;
 use bevy::utils::HashMap;
+use hexx::shapes::hexagon;
 use hexx::{DiagonalDirection, Direction, Hex};
 use regex_automata::dfa::Automaton;
 use regex_automata::{hybrid, Anchored};
@@ -10,6 +11,35 @@ use regex_automata::{hybrid, Anchored};
 struct Line {
     start: Hex,
     direction: Direction,
+}
+
+impl Line {
+    fn cells(&self, radius: usize) -> Vec<Hex> {
+        let mut cells = Vec::new();
+        let mut current = self.start;
+
+        loop {
+            cells.push(current);
+            current = current.neighbor(self.direction);
+
+            let distance = current.unsigned_distance_to(Hex::new(0, 0));
+            if distance > radius as u32 {
+                break;
+            }
+        }
+
+        cells
+    }
+
+    fn at(&self, radius: usize) -> Hex {
+        let mut current = self.start;
+
+        for _ in 0..radius {
+            current = current.neighbor(self.direction);
+        }
+
+        current
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -50,7 +80,7 @@ struct StringPermutations(Vec<CharacterPermutations>);
 struct Crossword {
     radius: usize,
     expressions: HashMap<Line, String>,
-    permutations: HashMap<Line, CharacterPermutations>,
+    permutations: HashMap<Line, StringPermutations>,
 }
 
 impl Crossword {
@@ -64,12 +94,75 @@ impl Crossword {
 
     fn add_expression(&mut self, line: Line, expression: String) {
         self.expressions.insert(line, expression);
+        self.permutations.insert(line, Default::default());
+    }
+
+    fn hexes_at_radius(&self, radius: usize) -> impl ExactSizeIterator<Item = Hex> + '_ {
+        hexagon(Hex::new(0, 0), radius as u32)
+    }
+
+    fn create_task(&self, radius: usize, hex: &Hex) -> Task {
+        dbg!(radius, hex);
+
+        // Find the 3 lines that intersect with the given hex.
+        let mut lines = Vec::with_capacity(3);
+
+        for line in self.expressions.keys() {
+            // true for forward, false for reverse.
+            let mut found = None;
+            if line.at(radius) == *hex {
+                found = Some(false);
+            } else if line.at(self.radius - radius) == *hex {
+                found = Some(true);
+            }
+            let Some(forward) = found else {
+                continue;
+            };
+
+            lines.push(LineTask {
+                expression: self.expressions[line].clone(),
+                forward,
+                string_permutations: self.permutations[line].clone(),
+            });
+        }
+
+        debug_assert_eq!(lines.len(), 3, "Expected 3 lines, found {:?}", lines);
+        // There should also be at least one forward and one reverse line.
+        debug_assert!(lines.iter().any(|line| line.forward));
+        debug_assert!(lines.iter().any(|line| !line.forward));
+
+        Task {
+            lines: [lines[0].clone(), lines[1].clone(), lines[2].clone()],
+            index: radius,
+        }
     }
 }
 
 fn main() {
     let crossword = basic_crossword();
     println!("{:#?}", crossword);
+
+    let r = crossword.radius;
+    let cells = crossword.hexes_at_radius(r).collect::<Vec<_>>();
+
+    dbg!(&cells);
+
+    let task = crossword.create_task(r, &cells[0]);
+    dbg!(task);
+}
+
+#[derive(Debug, Clone)]
+struct LineTask {
+    expression: String,
+    forward: bool,
+    string_permutations: StringPermutations,
+}
+
+#[derive(Debug, Clone)]
+struct Task {
+    lines: [LineTask; 3],
+    /// Distance from the outer ring.
+    index: usize,
 }
 
 #[test]
