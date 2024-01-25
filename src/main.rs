@@ -4,8 +4,8 @@ use crate::crosswords::basic_crossword;
 use bevy::utils::HashMap;
 use hexx::shapes::hexagon;
 use hexx::{DiagonalDirection, Direction, Hex};
-use regex_automata::dfa::Automaton;
-use regex_automata::{hybrid, Anchored};
+use regex_automata::dfa::{dense, Automaton};
+use regex_automata::{hybrid, Anchored, Input};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct Line {
@@ -132,6 +132,7 @@ impl Crossword {
         debug_assert!(lines.iter().any(|line| !line.forward));
 
         Task {
+            cell: *hex,
             lines: [lines[0].clone(), lines[1].clone(), lines[2].clone()],
             index: radius,
         }
@@ -144,11 +145,59 @@ fn main() {
 
     let r = crossword.radius;
     let cells = crossword.hexes_at_radius(r).collect::<Vec<_>>();
-
     dbg!(&cells);
 
     let task = crossword.create_task(r, &cells[0]);
-    dbg!(task);
+    dbg!(&task);
+
+    permutate(task);
+}
+
+fn permutate(task: Task) {
+    // For now just do the "last" permutation.
+    let hex = task.cell;
+
+    let mut s = String::new();
+
+    for line in &task.lines {
+        let mut successful = vec![];
+        for char in az() {
+            s.push(char);
+            if partial_match_forward(&line.expression, &s) {
+                successful.push(s.clone());
+            }
+            s.pop();
+        }
+        dbg!(&successful);
+    }
+}
+
+fn az() -> impl Iterator<Item = char> {
+    'A'..='Z'
+}
+
+fn partial_match_forward(expression: &str, string: &str) -> bool {
+    println!("expression: {:?}, string: {:?}", expression, string);
+    let dfa = dense::DFA::new(expression).unwrap();
+    let mut state = dfa.start_state_forward(&Input::new(string)).unwrap();
+
+    for &b in string.as_bytes().iter() {
+        state = dfa.next_state(state, b);
+
+        println!(
+            "char: {:?}, is_match: {}, is_special: {}, is_dead: {}",
+            b as char,
+            dfa.is_match_state(state),
+            dfa.is_special_state(state),
+            dfa.is_dead_state(state)
+        );
+
+        if dfa.is_dead_state(state) {
+            return false;
+        }
+    }
+
+    !dfa.is_dead_state(state)
 }
 
 #[derive(Debug, Clone)]
@@ -160,49 +209,84 @@ struct LineTask {
 
 #[derive(Debug, Clone)]
 struct Task {
+    cell: Hex,
+
     lines: [LineTask; 3],
     /// Distance from the outer ring.
     index: usize,
 }
 
-#[test]
-fn test_dense_dfa() {
-    use regex_automata::{
-        dfa::{dense, Automaton},
-        Input,
-    };
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let pattern = r"^.(C|HH)*$";
-    let dfa = dense::DFA::new(pattern).unwrap();
-    // let dfa = hybrid::dfa::DFA::new(pattern).unwrap();
-    let haystack = "CCCHCCHHC";
+    #[test]
+    fn forward() {
+        // expression, matches, non-matches
+        let fixtures = vec![
+            ("^(A|DC)*$", vec!["A", "DC", "AAADCD"], vec!["ADD", "DCDDC"]),
+            ("^.(A|D)*.$", vec!["A", "AA"], vec!["ADZZ", "DZC"]),
+        ];
 
-    let mut state = dfa
-        .start_state_reverse(&Input::new(haystack).anchored(Anchored::No))
-        .unwrap();
-
-    // let mut cache = dfa.create_cache();
-    // let mut state = dfa.start_state_forward(&mut cache, &Input::new(haystack).anchored(Anchored::Yes)).unwrap();
-
-    for &b in haystack.as_bytes().iter().rev() {
-        state = dfa.next_state(state, b);
-        // state = dfa.next_state(&mut cache, state, b).unwrap();
-
-        let s = state;
-        println!(
-            "char: {:?}, is_match: {}, is_special: {}, is_dead: {}",
-            b as char,
-            dfa.is_match_state(s),
-            dfa.is_special_state(s),
-            dfa.is_dead_state(s)
-        );
+        for fixture in &fixtures {
+            for string in &fixture.1 {
+                assert!(
+                    partial_match_forward(fixture.0, string),
+                    "{:?} {:?}",
+                    fixture,
+                    string
+                );
+            }
+            for string in &fixture.2 {
+                assert!(
+                    !partial_match_forward(fixture.0, string),
+                    "{:?} {:?}",
+                    fixture,
+                    string
+                );
+            }
+        }
     }
 
-    state = dfa.next_eoi_state(state);
-    println!(
-        "is_match: {}, is_special: {}, is_dead: {}",
-        dfa.is_match_state(state),
-        dfa.is_special_state(state),
-        dfa.is_dead_state(state)
-    );
+    #[test]
+    fn test_dense_dfa() {
+        use regex_automata::{
+            dfa::{dense, Automaton},
+            Input,
+        };
+
+        let pattern = r"^.(C|HH)*$";
+        let dfa = dense::DFA::new(pattern).unwrap();
+        // let dfa = hybrid::dfa::DFA::new(pattern).unwrap();
+        let haystack = "CCCHCCHHC";
+
+        let mut state = dfa
+            .start_state_reverse(&Input::new(haystack).anchored(Anchored::No))
+            .unwrap();
+
+        // let mut cache = dfa.create_cache();
+        // let mut state = dfa.start_state_forward(&mut cache, &Input::new(haystack).anchored(Anchored::Yes)).unwrap();
+
+        for &b in haystack.as_bytes().iter().rev() {
+            state = dfa.next_state(state, b);
+            // state = dfa.next_state(&mut cache, state, b).unwrap();
+
+            let s = state;
+            println!(
+                "char: {:?}, is_match: {}, is_special: {}, is_dead: {}",
+                b as char,
+                dfa.is_match_state(s),
+                dfa.is_special_state(s),
+                dfa.is_dead_state(s)
+            );
+        }
+
+        state = dfa.next_eoi_state(state);
+        println!(
+            "is_match: {}, is_special: {}, is_dead: {}",
+            dfa.is_match_state(state),
+            dfa.is_special_state(state),
+            dfa.is_dead_state(state)
+        );
+    }
 }
