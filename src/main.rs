@@ -1,11 +1,13 @@
 mod crosswords;
 
 use crate::crosswords::basic_crossword;
-use bevy::utils::HashMap;
+use bevy::utils::{HashMap, HashSet};
 use hexx::shapes::hexagon;
 use hexx::{DiagonalDirection, Direction, Hex};
 use regex_automata::dfa::{dense, Automaton};
 use regex_automata::{hybrid, Anchored, Input};
+use std::fmt::{Debug, Formatter};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct Line {
@@ -42,45 +44,32 @@ impl Line {
     }
 }
 
+// This needs to be a tree I think.
+// Each node is a character, and each node has a list of children.
 #[derive(Debug, Clone, Default)]
-struct CharacterPermutations {
-    bitfield: u32,
+struct PotentialStringTree {
+    children: HashMap<char, PotentialStringTree>,
 }
 
-impl CharacterPermutations {
-    fn new() -> Self {
-        Self { bitfield: 0 }
-    }
+#[derive(Clone)]
+enum Search {
+    Expression(String),
+    Function(Arc<dyn Fn(&str) -> bool>),
+}
 
-    fn add(&mut self, c: char) {
-        debug_assert!(
-            c.is_ascii_uppercase() && c >= 'A' && c <= 'Z',
-            "Invalid character: {}",
-            c
-        );
-        let index = (c as u32) - ('A' as u32);
-        self.bitfield |= 1 << index;
-    }
-
-    fn contains(&self, c: char) -> bool {
-        debug_assert!(
-            c.is_ascii_uppercase() && c >= 'A' && c <= 'Z',
-            "Invalid character: {}",
-            c
-        );
-        let index = (c as u32) - ('A' as u32);
-        (self.bitfield & (1 << index)) != 0
+impl Debug for Search {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Search::Expression(s) => write!(f, "Search::Expression({:?})", s),
+            Search::Function(_) => write!(f, "Search::Function(...)"),
+        }
     }
 }
 
-#[derive(Debug, Clone, Default)]
-struct StringPermutations(Vec<CharacterPermutations>);
-
-#[derive(Debug, Clone)]
 struct Crossword {
     radius: usize,
-    expressions: HashMap<Line, String>,
-    permutations: HashMap<Line, StringPermutations>,
+    expressions: HashMap<Line, Search>,
+    permutations: HashMap<Line, PotentialStringTree>,
 }
 
 impl Crossword {
@@ -93,7 +82,15 @@ impl Crossword {
     }
 
     fn add_expression(&mut self, line: Line, expression: String) {
-        self.expressions.insert(line, expression);
+        self.add(line, Search::Expression(expression));
+    }
+
+    fn add_function(&mut self, line: Line, function: Arc<dyn Fn(&str) -> bool>) {
+        self.add(line, Search::Function(function));
+    }
+
+    fn add(&mut self, line: Line, search: Search) {
+        self.expressions.insert(line, search);
         self.permutations.insert(line, Default::default());
     }
 
@@ -120,13 +117,13 @@ impl Crossword {
             };
 
             lines.push(LineTask {
-                expression: self.expressions[line].clone(),
+                search: self.expressions[line].clone(),
                 forward,
                 string_permutations: self.permutations[line].clone(),
             });
         }
 
-        debug_assert_eq!(lines.len(), 3, "Expected 3 lines, found {:?}", lines);
+        debug_assert_eq!(lines.len(), 3);
         // There should also be at least one forward and one reverse line.
         debug_assert!(lines.iter().any(|line| line.forward));
         debug_assert!(lines.iter().any(|line| !line.forward));
@@ -141,14 +138,12 @@ impl Crossword {
 
 fn main() {
     let crossword = basic_crossword();
-    println!("{:#?}", crossword);
 
     let r = crossword.radius;
     let cells = crossword.hexes_at_radius(r).collect::<Vec<_>>();
     dbg!(&cells);
 
     let task = crossword.create_task(r, &cells[0]);
-    dbg!(&task);
 
     permutate(task);
 }
@@ -158,18 +153,43 @@ fn permutate(task: Task) {
     let hex = task.cell;
 
     let mut s = String::new();
+    let mut first = true;
+    let mut common_set = HashSet::new();
 
     for line in &task.lines {
         let mut successful = vec![];
+        println!("line: {:?}", line.search);
         for char in az() {
             s.push(char);
-            if partial_match_forward(&line.expression, &s) {
-                successful.push(s.clone());
+            match line.search {
+                Search::Expression(ref expression) => {
+                    if partial_match_forward(expression, &s) {
+                        successful.push(s.clone());
+                    }
+                }
+
+                Search::Function(ref function) => {
+                    if function(&s) {
+                        successful.push(s.clone());
+                    }
+                }
             }
             s.pop();
         }
         dbg!(&successful);
+
+        if first {
+            common_set = successful.into_iter().collect();
+            first = false;
+        } else {
+            common_set = common_set
+                .intersection(&successful.into_iter().collect())
+                .cloned()
+                .collect();
+        }
     }
+
+    dbg!(&common_set);
 }
 
 fn az() -> impl Iterator<Item = char> {
@@ -200,14 +220,14 @@ fn partial_match_forward(expression: &str, string: &str) -> bool {
     !dfa.is_dead_state(state)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 struct LineTask {
-    expression: String,
+    search: Search,
     forward: bool,
-    string_permutations: StringPermutations,
+    string_permutations: PotentialStringTree,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct Task {
     cell: Hex,
 
@@ -224,7 +244,11 @@ mod tests {
     fn forward() {
         // expression, matches, non-matches
         let fixtures = vec![
-            ("^(A|DC)*$", vec!["A", "DC", "AAADCD"], vec!["ADD", "DCDDC"]),
+            (
+                "^(A|DC)*$",
+                vec!["A", "DC", "AAADCD"],
+                vec!["ADD", "DCDDC", "Z"],
+            ),
             ("^.(A|D)*.$", vec!["A", "AA"], vec!["ADZZ", "DZC"]),
         ];
 
