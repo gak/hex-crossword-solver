@@ -25,8 +25,8 @@ pub fn basic_crossword() -> Crossword {
         (
             BottomLeft,
             vec![
-                (0, -1, exp(r"BC")),
-                (1, -1, exp(r"B.*A")),
+                (0, -1, exp(r"CB")),
+                (1, -1, exp(r"A.*B")),
                 (1, 0, exp(r".*")),
             ],
         ),

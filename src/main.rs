@@ -101,8 +101,8 @@ impl Crossword {
     fn create_task(&self, radius: usize, hex: &Hex) -> Task {
         dbg!(radius, hex);
 
-        // Find the 3 lines that intersect with the given hex.
-        let mut lines = Vec::with_capacity(3);
+        // Find the 2 lines that intersect with the given hex.
+        let mut lines = Vec::with_capacity(2);
 
         for line in self.expressions.keys() {
             println!("\nline: {:?}", line);
@@ -112,39 +112,27 @@ impl Crossword {
                 line.at(self.radius - radius)
             );
 
-            // true for forward, false for reverse.
-            let mut found = None;
-            if line.at(radius + 1) == *hex {
-                println!("found at radius: {:?} reverse", line);
-                found = Some(false);
-            } else if line.at(self.radius - radius) == *hex {
-                println!("found at radius: {:?} forward", line);
-                found = Some(true);
-            }
-            let Some(forward) = found else {
+            if line.at(self.radius - radius) != *hex {
                 continue;
-            };
+            }
+            println!("found at radius: {:?} forward", line);
 
             lines.push(LineTask {
                 search: self.expressions[line].clone(),
-                forward,
                 string_permutations: self.permutations[line].clone(),
             });
         }
 
         debug_assert_eq!(
             lines.len(),
-            3,
+            2,
             "There should be 3 lines. Found: {:?}",
             lines
         );
-        // There should also be at least one forward and one reverse line.
-        debug_assert!(lines.iter().any(|line| line.forward));
-        debug_assert!(lines.iter().any(|line| !line.forward));
 
         Task {
             cell: *hex,
-            lines: [lines[0].clone(), lines[1].clone(), lines[2].clone()],
+            lines: [lines[0].clone(), lines[1].clone()],
             index: radius,
         }
     }
@@ -177,14 +165,8 @@ fn permutate(task: Task) {
             s.push(char);
             match line.search {
                 Search::Expression(ref expression) => {
-                    if line.forward {
-                        if partial_match_forward(expression, &s) {
-                            successful.push(s.clone());
-                        }
-                    } else {
-                        if partial_match_forward(expression, &s) {
-                            successful.push(s.clone());
-                        }
+                    if partial_match_forward(expression, &s) {
+                        successful.push(s.clone());
                     }
                 }
 
@@ -240,39 +222,9 @@ fn partial_match_forward(expression: &str, string: &str) -> bool {
     !dfa.is_dead_state(state)
 }
 
-/// Similar to `partial_match_forward`, but in reverse.
-///
-/// string does not need to be reversed.
-fn partial_match_reverse(expression: &str, string: &str) -> bool {
-    println!("expression: {:?}, string: {:?}", expression, string);
-    let dfa = dense::DFA::new(expression).unwrap();
-    let mut state = dfa
-        .start_state_reverse(&Input::new(string).anchored(Anchored::Yes))
-        .unwrap();
-
-    for &b in string.as_bytes().iter().rev() {
-        state = dfa.next_state(state, b);
-
-        println!(
-            "char: {:?}, is_match: {}, is_special: {}, is_dead: {}",
-            b as char,
-            dfa.is_match_state(state),
-            dfa.is_special_state(state),
-            dfa.is_dead_state(state)
-        );
-
-        if dfa.is_dead_state(state) {
-            return false;
-        }
-    }
-
-    !dfa.is_dead_state(state)
-}
-
 #[derive(Clone, Debug)]
 struct LineTask {
     search: Search,
-    forward: bool,
     string_permutations: PotentialStringTree,
 }
 
@@ -280,7 +232,7 @@ struct LineTask {
 struct Task {
     cell: Hex,
 
-    lines: [LineTask; 3],
+    lines: [LineTask; 2],
     /// Distance from the outer ring.
     index: usize,
 }
@@ -313,38 +265,6 @@ mod tests {
             for string in &fixture.2 {
                 assert!(
                     !partial_match_forward(fixture.0, string),
-                    "{:?} {:?}",
-                    fixture,
-                    string
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn reverse() {
-        // expression, matches, non-matches
-        let fixtures = vec![
-            (
-                "^(A|DC)*$",
-                vec!["A", "CDC", "CZZZ"],
-                vec!["ZADD", "DCDDC", "Z"],
-            ),
-            ("^.(A|D)*.$", vec!["A", "AA"], vec!["ADZZ", "DZC"]),
-        ];
-
-        for fixture in &fixtures {
-            for string in &fixture.1 {
-                assert!(
-                    partial_match_reverse(fixture.0, string),
-                    "{:?} {:?}",
-                    fixture,
-                    string
-                );
-            }
-            for string in &fixture.2 {
-                assert!(
-                    !partial_match_reverse(fixture.0, string),
                     "{:?} {:?}",
                     fixture,
                     string
