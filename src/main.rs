@@ -105,11 +105,20 @@ impl Crossword {
         let mut lines = Vec::with_capacity(3);
 
         for line in self.expressions.keys() {
+            println!("\nline: {:?}", line);
+            println!("line.at(radius): {:?}", line.at(radius));
+            println!(
+                "line.at(self.radius - radius): {:?}",
+                line.at(self.radius - radius)
+            );
+
             // true for forward, false for reverse.
             let mut found = None;
-            if line.at(radius) == *hex {
+            if line.at(radius + 1) == *hex {
+                println!("found at radius: {:?} reverse", line);
                 found = Some(false);
             } else if line.at(self.radius - radius) == *hex {
+                println!("found at radius: {:?} forward", line);
                 found = Some(true);
             }
             let Some(forward) = found else {
@@ -123,7 +132,12 @@ impl Crossword {
             });
         }
 
-        debug_assert_eq!(lines.len(), 3);
+        debug_assert_eq!(
+            lines.len(),
+            3,
+            "There should be 3 lines. Found: {:?}",
+            lines
+        );
         // There should also be at least one forward and one reverse line.
         debug_assert!(lines.iter().any(|line| line.forward));
         debug_assert!(lines.iter().any(|line| !line.forward));
@@ -143,7 +157,7 @@ fn main() {
     let cells = crossword.hexes_at_radius(r).collect::<Vec<_>>();
     dbg!(&cells);
 
-    let task = crossword.create_task(r, &cells[0]);
+    let task = crossword.create_task(r, &cells[2]);
 
     permutate(task);
 }
@@ -163,8 +177,14 @@ fn permutate(task: Task) {
             s.push(char);
             match line.search {
                 Search::Expression(ref expression) => {
-                    if partial_match_forward(expression, &s) {
-                        successful.push(s.clone());
+                    if line.forward {
+                        if partial_match_forward(expression, &s) {
+                            successful.push(s.clone());
+                        }
+                    } else {
+                        if partial_match_forward(expression, &s) {
+                            successful.push(s.clone());
+                        }
                     }
                 }
 
@@ -202,6 +222,35 @@ fn partial_match_forward(expression: &str, string: &str) -> bool {
     let mut state = dfa.start_state_forward(&Input::new(string)).unwrap();
 
     for &b in string.as_bytes().iter() {
+        state = dfa.next_state(state, b);
+
+        println!(
+            "char: {:?}, is_match: {}, is_special: {}, is_dead: {}",
+            b as char,
+            dfa.is_match_state(state),
+            dfa.is_special_state(state),
+            dfa.is_dead_state(state)
+        );
+
+        if dfa.is_dead_state(state) {
+            return false;
+        }
+    }
+
+    !dfa.is_dead_state(state)
+}
+
+/// Similar to `partial_match_forward`, but in reverse.
+///
+/// string does not need to be reversed.
+fn partial_match_reverse(expression: &str, string: &str) -> bool {
+    println!("expression: {:?}, string: {:?}", expression, string);
+    let dfa = dense::DFA::new(expression).unwrap();
+    let mut state = dfa
+        .start_state_reverse(&Input::new(string).anchored(Anchored::Yes))
+        .unwrap();
+
+    for &b in string.as_bytes().iter().rev() {
         state = dfa.next_state(state, b);
 
         println!(
@@ -273,19 +322,52 @@ mod tests {
     }
 
     #[test]
+    fn reverse() {
+        // expression, matches, non-matches
+        let fixtures = vec![
+            (
+                "^(A|DC)*$",
+                vec!["A", "CDC", "CZZZ"],
+                vec!["ZADD", "DCDDC", "Z"],
+            ),
+            ("^.(A|D)*.$", vec!["A", "AA"], vec!["ADZZ", "DZC"]),
+        ];
+
+        for fixture in &fixtures {
+            for string in &fixture.1 {
+                assert!(
+                    partial_match_reverse(fixture.0, string),
+                    "{:?} {:?}",
+                    fixture,
+                    string
+                );
+            }
+            for string in &fixture.2 {
+                assert!(
+                    !partial_match_reverse(fixture.0, string),
+                    "{:?} {:?}",
+                    fixture,
+                    string
+                );
+            }
+        }
+    }
+
+    #[test]
     fn test_dense_dfa() {
         use regex_automata::{
             dfa::{dense, Automaton},
             Input,
         };
 
-        let pattern = r"^.(C|HH)*$";
+        let pattern = r"^(A|DC)*$";
         let dfa = dense::DFA::new(pattern).unwrap();
         // let dfa = hybrid::dfa::DFA::new(pattern).unwrap();
-        let haystack = "CCCHCCHHC";
+        let haystack = "AAAAAAADC";
+        // let haystack = "DC";
 
         let mut state = dfa
-            .start_state_reverse(&Input::new(haystack).anchored(Anchored::No))
+            .start_state_reverse(&Input::new(&haystack).anchored(Anchored::No))
             .unwrap();
 
         // let mut cache = dfa.create_cache();
