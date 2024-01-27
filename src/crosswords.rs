@@ -12,7 +12,7 @@ fn fun(f: impl Fn(&str) -> bool + 'static) -> Search {
     Search::Function(Arc::new(f))
 }
 
-pub fn basic_crossword() -> Crossword {
+pub fn basic_crossword_1() -> Crossword {
     let expressions = vec![
         (
             Right,
@@ -41,7 +41,55 @@ pub fn basic_crossword() -> Crossword {
     ];
 
     let mut crossword = Crossword::new(1);
+    create(&mut crossword, expressions);
 
+    crossword
+}
+
+pub fn basic_crossword_2() -> Crossword {
+    let expressions = vec![
+        (
+            Right,
+            vec![
+                (0, -2, exp(r"(AB|C)*")),
+                (-1, -1, exp(r"(AB|C)*")),
+                (-2, 0, exp(r"(AB|C)*")),
+                (-2, 1, exp(r".*")),
+                (-2, 2, fun(backreference_three_same_chars)),
+            ],
+        ),
+        (
+            BottomLeft,
+            vec![
+                (2, 0, exp(r".*")),
+                (2, -1, exp(r".*")),
+                (2, -2, exp(r".*")),
+                (1, -2, exp(r".*")),
+                (0, -2, exp(r".*")),
+            ],
+        ),
+        (
+            TopLeft,
+            vec![
+                (-2, 2, exp(r".*")),
+                (-1, 2, exp(r".*")),
+                (0, 2, exp(r".*")),
+                (1, 1, exp(r".*")),
+                (2, 0, exp(r".*")),
+            ],
+        ),
+    ];
+
+    let mut crossword = Crossword::new(2);
+    create(&mut crossword, expressions);
+
+    crossword
+}
+
+fn create(
+    crossword: &mut Crossword,
+    expressions: Vec<(DiagonalDirection, Vec<(i32, i32, Search)>)>,
+) {
     for (direction, expressions) in expressions {
         for (x, y, expression) in expressions {
             crossword.add(
@@ -53,8 +101,6 @@ pub fn basic_crossword() -> Crossword {
             );
         }
     }
-
-    crossword
 }
 
 /// (.)\1
@@ -68,4 +114,22 @@ fn backreference_two_same_chars(input: &str) -> bool {
     };
 
     first == second
+}
+
+/// (.)\1\1
+///
+/// Allow zero or one char.
+fn backreference_three_same_chars(input: &str) -> bool {
+    let mut chars = input.chars();
+    let first = chars.next().unwrap();
+
+    if let Some(second) = chars.next() {
+        if first == second {
+            if let Some(third) = chars.next() {
+                return first == third;
+            }
+        }
+    }
+
+    true
 }

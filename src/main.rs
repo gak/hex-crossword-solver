@@ -1,6 +1,6 @@
 mod crosswords;
 
-use crate::crosswords::basic_crossword;
+use crate::crosswords::basic_crossword_2;
 use bevy::utils::{HashMap, HashSet};
 use hexx::shapes::hexagon;
 use hexx::{DiagonalDirection, Direction, Hex};
@@ -94,8 +94,17 @@ impl Crossword {
         self.permutations.insert(line, Default::default());
     }
 
-    fn hexes_at_radius(&self, radius: usize) -> impl ExactSizeIterator<Item = Hex> + '_ {
-        hexagon(Hex::new(0, 0), radius as u32)
+    fn hex_border(&self, radius: usize) -> impl ExactSizeIterator<Item = Hex> + '_ {
+        let mut cells = HashSet::new();
+        for hex in hexagon(Hex::new(0, 0), radius as u32) {
+            let distance = hex.distance_to(Hex::new(0, 0));
+            if distance != radius as i32 {
+                continue;
+            }
+            cells.insert(hex);
+        }
+
+        cells.into_iter()
     }
 
     fn create_task(&self, radius: usize, hex: &Hex) -> Task {
@@ -123,31 +132,26 @@ impl Crossword {
             });
         }
 
-        debug_assert_eq!(
-            lines.len(),
-            2,
-            "There should be 3 lines. Found: {:?}",
-            lines
-        );
+        debug_assert!(lines.len() > 0, "There should be at least 1 line");
 
         Task {
             cell: *hex,
-            lines: [lines[0].clone(), lines[1].clone()],
+            lines,
             index: radius,
         }
     }
 }
 
 fn main() {
-    let crossword = basic_crossword();
+    let crossword = basic_crossword_2();
 
     let r = crossword.radius;
-    let cells = crossword.hexes_at_radius(r).collect::<Vec<_>>();
-    dbg!(&cells);
+    let cells = crossword.hex_border(r).collect::<Vec<_>>();
 
-    let task = crossword.create_task(r, &cells[2]);
-
-    permutate(task);
+    for cell in &cells {
+        let task = crossword.create_task(r, cell);
+        permutate(task);
+    }
 }
 
 fn permutate(task: Task) {
@@ -199,20 +203,20 @@ fn az() -> impl Iterator<Item = char> {
 }
 
 fn partial_match_forward(expression: &str, string: &str) -> bool {
-    println!("expression: {:?}, string: {:?}", expression, string);
+    // println!("expression: {:?}, string: {:?}", expression, string);
     let dfa = dense::DFA::new(expression).unwrap();
     let mut state = dfa.start_state_forward(&Input::new(string)).unwrap();
 
     for &b in string.as_bytes().iter() {
         state = dfa.next_state(state, b);
 
-        println!(
-            "char: {:?}, is_match: {}, is_special: {}, is_dead: {}",
-            b as char,
-            dfa.is_match_state(state),
-            dfa.is_special_state(state),
-            dfa.is_dead_state(state)
-        );
+        // println!(
+        //     "char: {:?}, is_match: {}, is_special: {}, is_dead: {}",
+        //     b as char,
+        //     dfa.is_match_state(state),
+        //     dfa.is_special_state(state),
+        //     dfa.is_dead_state(state)
+        // );
 
         if dfa.is_dead_state(state) {
             return false;
@@ -232,7 +236,7 @@ struct LineTask {
 struct Task {
     cell: Hex,
 
-    lines: [LineTask; 2],
+    lines: Vec<LineTask>,
     /// Distance from the outer ring.
     index: usize,
 }
