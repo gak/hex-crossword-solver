@@ -44,11 +44,22 @@ impl Line {
     }
 }
 
-// This needs to be a tree I think.
-// Each node is a character, and each node has a list of children.
 #[derive(Debug, Clone, Default)]
-struct PotentialStringTree {
-    children: HashMap<char, PotentialStringTree>,
+struct PotentialStrings(Vec<String>);
+
+impl PotentialStrings {
+    fn insert(&mut self, string: &str) {
+        self.0.push(string.to_string());
+    }
+
+    // returns one item as an empty string if there are no strings
+    fn iter_or_empty(&self) -> Vec<String> {
+        if self.0.len() == 0 {
+            vec!["".to_string()]
+        } else {
+            self.0.clone()
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -69,7 +80,7 @@ impl Debug for Search {
 struct Crossword {
     radius: usize,
     expressions: HashMap<Line, Search>,
-    permutations: HashMap<Line, PotentialStringTree>,
+    permutations: HashMap<Line, PotentialStrings>,
 }
 
 impl Crossword {
@@ -127,6 +138,7 @@ impl Crossword {
             println!("found at radius: {:?} forward", line);
 
             lines.push(LineTask {
+                line: line.clone(),
                 search: self.expressions[line].clone(),
                 string_permutations: self.permutations[line].clone(),
             });
@@ -154,34 +166,46 @@ fn main() {
     }
 }
 
-fn permutate(task: Task) {
-    // For now just do the "last" permutation.
-    let hex = task.cell;
+struct TaskNewStrings {
+    line: Line,
+    strings: Vec<String>,
+}
 
-    let mut s = String::new();
+fn permutate(task: Task) -> Vec<TaskNewStrings> {
     let mut first = true;
     let mut common_set = HashSet::new();
 
-    for line in &task.lines {
-        let mut successful = vec![];
-        println!("line: {:?}", line.search);
-        for char in az() {
-            s.push(char);
-            match line.search {
-                Search::Expression(ref expression) => {
-                    if partial_match_forward(expression, &s) {
-                        successful.push(s.clone());
-                    }
+    // HashMap<line, HashMap<char, Vec<String>>>
+    let mut new_words = HashMap::new();
+
+    for line_task in task.lines.iter() {
+        println!("line: {:?}", line_task.search);
+
+        let mut successful = Vec::with_capacity(26);
+        for prefix in line_task.string_permutations.iter_or_empty() {
+            let mut s = prefix.to_string();
+            for char in az() {
+                s.push(char);
+                println!("s: {:?}", s);
+                let good = match line_task.search {
+                    Search::Expression(ref expression) => partial_match_forward(expression, &s),
+                    Search::Function(ref function) => function(&s),
+                };
+
+                if good {
+                    successful.push(char);
+                    new_words
+                        .entry(line_task.line.clone())
+                        .or_insert_with(HashMap::new)
+                        .entry(char)
+                        .or_insert_with(Vec::new)
+                        .push(s.clone());
                 }
 
-                Search::Function(ref function) => {
-                    if function(&s) {
-                        successful.push(s.clone());
-                    }
-                }
+                s.pop();
             }
-            s.pop();
         }
+
         dbg!(&successful);
 
         if first {
@@ -196,6 +220,19 @@ fn permutate(task: Task) {
     }
 
     dbg!(&common_set);
+
+    let mut task_new_strings = Vec::new();
+    for line_task in task.lines.iter() {
+        for char in &common_set {
+            let mut new_strings = new_words[&line_task.line][char].clone();
+            task_new_strings.push(TaskNewStrings {
+                line: line_task.line.clone(),
+                strings: new_strings,
+            });
+        }
+    }
+
+    task_new_strings
 }
 
 fn az() -> impl Iterator<Item = char> {
@@ -228,8 +265,9 @@ fn partial_match_forward(expression: &str, string: &str) -> bool {
 
 #[derive(Clone, Debug)]
 struct LineTask {
+    line: Line,
     search: Search,
-    string_permutations: PotentialStringTree,
+    string_permutations: PotentialStrings,
 }
 
 #[derive(Clone)]
@@ -244,6 +282,20 @@ struct Task {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bevy::asset::AssetContainer;
+
+    #[test]
+    fn string_tree() {
+        let mut tree = PotentialStrings::default();
+        tree.insert("DOG");
+        tree.insert("C");
+        tree.insert("CAT");
+        tree.insert("CAP");
+
+        let c = tree.iter_or_empty().collect::<Vec<_>>();
+        assert!(c.contains(&"C"));
+        assert!(c.contains(&"CAT"));
+    }
 
     #[test]
     fn forward() {
