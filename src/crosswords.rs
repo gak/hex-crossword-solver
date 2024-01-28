@@ -52,20 +52,20 @@ pub fn basic_crossword_2() -> Crossword {
             Right,
             vec![
                 (0, -2, exp(r"(AB|C)*")),
-                (-1, -1, exp(r"(AB|C)*")),
-                (-2, 0, exp(r"(AB|C)*")),
-                (-2, 1, exp(r".*")),
+                (-1, -1, exp(r"D.*F.*")),
+                (-2, 0, exp(r".*(K|L)*.*")),
+                (-2, 1, exp(r"(M|N|O|P)*")),
                 (-2, 2, fun(backreference_three_same_chars)),
             ],
         ),
         (
             BottomLeft,
             vec![
-                (2, 0, exp(r".*")),
-                (2, -1, exp(r".*")),
-                (2, -2, exp(r".*")),
-                (1, -2, exp(r".*")),
-                (0, -2, exp(r".*")),
+                (2, 0, exp(r"LPQ")),
+                (2, -1, exp(r"GK.*")),
+                (2, -2, exp(r".*FJN.*")),
+                (1, -2, exp(r"BEIM")),
+                (0, -2, exp(r"ADH")),
             ],
         ),
         (

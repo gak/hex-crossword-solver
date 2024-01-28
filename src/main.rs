@@ -121,17 +121,10 @@ impl Crossword {
     fn create_task(&self, radius: usize, hex: &Hex) -> Task {
         dbg!(radius, hex);
 
-        // Find the 2 lines that intersect with the given hex.
-        let mut lines = Vec::with_capacity(2);
+        // Find the lines that intersect with the given hex.
+        let mut lines = Vec::new();
 
         for line in self.expressions.keys() {
-            println!("\nline: {:?}", line);
-            println!("line.at(radius): {:?}", line.at(radius));
-            println!(
-                "line.at(self.radius - radius): {:?}",
-                line.at(self.radius - radius)
-            );
-
             if line.at(self.radius - radius) != *hex {
                 continue;
             }
@@ -155,17 +148,24 @@ impl Crossword {
 }
 
 fn main() {
-    let crossword = basic_crossword_2();
+    let mut crossword = basic_crossword_2();
 
-    let r = crossword.radius;
-    let cells = crossword.hex_border(r).collect::<Vec<_>>();
+    for r in (0..=crossword.radius).rev() {
+        let cells = crossword.hex_border(r).collect::<Vec<_>>();
 
-    for cell in &cells {
-        let task = crossword.create_task(r, cell);
-        permutate(task);
+        for cell in &cells {
+            let task = crossword.create_task(r, cell);
+            let changes = permutate(task);
+            dbg!(&changes);
+
+            for change in changes {
+                crossword.permutations.get_mut(&change.line).unwrap().0 = change.strings;
+            }
+        }
     }
 }
 
+#[derive(Debug, Clone)]
 struct TaskNewStrings {
     line: Line,
     strings: Vec<String>,
@@ -175,7 +175,6 @@ fn permutate(task: Task) -> Vec<TaskNewStrings> {
     let mut first = true;
     let mut common_set = HashSet::new();
 
-    // HashMap<line, HashMap<char, Vec<String>>>
     let mut new_words = HashMap::new();
 
     for line_task in task.lines.iter() {
@@ -186,7 +185,6 @@ fn permutate(task: Task) -> Vec<TaskNewStrings> {
             let mut s = prefix.to_string();
             for char in az() {
                 s.push(char);
-                println!("s: {:?}", s);
                 let good = match line_task.search {
                     Search::Expression(ref expression) => partial_match_forward(expression, &s),
                     Search::Function(ref function) => function(&s),
@@ -206,8 +204,6 @@ fn permutate(task: Task) -> Vec<TaskNewStrings> {
             }
         }
 
-        dbg!(&successful);
-
         if first {
             common_set = successful.into_iter().collect();
             first = false;
@@ -219,17 +215,19 @@ fn permutate(task: Task) -> Vec<TaskNewStrings> {
         }
     }
 
-    dbg!(&common_set);
+    println!("{:?}", &common_set);
 
     let mut task_new_strings = Vec::new();
     for line_task in task.lines.iter() {
+        let mut new_strings = Vec::new();
         for char in &common_set {
-            let mut new_strings = new_words[&line_task.line][char].clone();
-            task_new_strings.push(TaskNewStrings {
-                line: line_task.line.clone(),
-                strings: new_strings,
-            });
+            let mut s = new_words[&line_task.line][char].clone();
+            new_strings.append(&mut s);
         }
+        task_new_strings.push(TaskNewStrings {
+            line: line_task.line.clone(),
+            strings: new_strings,
+        });
     }
 
     task_new_strings
